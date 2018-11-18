@@ -8,6 +8,8 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/hex"
+	"errors"
+	"fmt"
 	"math/big"
 	"time"
 
@@ -89,8 +91,44 @@ func (c RTCCertificate) Expires() time.Time {
 
 // GetFingerprints returns the list of certificate fingerprints, one of which
 // is computed with the digest algorithm used in the certificate signature.
-func (c RTCCertificate) GetFingerprints() {
-	panic("not implemented yet.") // nolint
+func (c RTCCertificate) GetFingerprints() []RTCDtlsFingerprint {
+	res := make([]RTCDtlsFingerprint, len(fingerprintAlgoritms))
+
+	i := 0
+	for algo, digester := range fingerprintAlgoritms {
+		digest := []byte(fmt.Sprintf("%x", digester(c.x509Cert.Raw)))
+		value, err := formatFingerprint(digest)
+		if err != nil {
+			fmt.Printf("Could not digest %s: %v\n", algo, err)
+			continue
+		}
+		res[i] = RTCDtlsFingerprint{Algorithm: algo, Value: value}
+	}
+
+	return res[:i+1]
+}
+
+func formatFingerprint(raw []byte) (string, error) {
+	rawlen := len(raw)
+	if rawlen == 0 {
+		return "", nil
+	}
+	if rawlen%2 != 0 {
+		return "", errors.New("invalid fingerprint length")
+	}
+	res := make([]byte, rawlen>>1+rawlen-1)
+
+	pos := 0
+	for i, c := range raw {
+		res[pos] = c
+		pos++
+		if (i)%2 != 0 && i < rawlen-1 {
+			res[pos] = byte(':')
+			pos++
+		}
+	}
+
+	return string(res), nil
 }
 
 // GenerateCertificate causes the creation of an X.509 certificate and
